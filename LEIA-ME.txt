@@ -49,3 +49,4 @@ Compare um valor com o simulador do Melhor Envio para conferir.
 ENTREGA GRÁTIS EM TRÊS LAGOAS
 Já está configurada. Para mudar, edite ibgeGratis e cepGratis na lista ENVIO do index.html.
 publicado
+publicado
