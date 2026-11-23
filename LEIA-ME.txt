@@ -1,0 +1,15 @@
+O UNIVERSO FEMININO - versão para Cloudflare Pages (gratuito)
+
+Arquivos na raiz do repositório: index.html, admin.html, todas as fotos .webp
+Dentro de functions/api/: frete.js e pedidos.js
+
+Configurações no painel da Cloudflare (Workers & Pages > seu projeto > Settings):
+ - Bindings > KV namespace: nome da variável PEDIDOS, namespace "pedidos"
+ - Variables and secrets:
+     ME_TOKEN     (secreto)  token do Melhor Envio
+     ORIGEM_CEP   79645150
+     ME_CONTATO   pri_reis_cardoso@icloud.com
+     ADMIN_PASSWORD (secreto) senha para entrar em /admin.html
+Depois de salvar, faça um novo deploy (Deployments > Retry deployment).
+
+Página dos seus pedidos: SEU-SITE/admin.html
