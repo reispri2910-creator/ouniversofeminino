@@ -60,3 +60,4 @@ Arquivos novos: netlify/functions/pedidos.mjs, package.json, admin.html
 3) Seus pedidos: abra SEU-SITE/admin.html, entre com a senha, escolha a etapa
    (Pagamento confirmado, Aguardando envio, Enviado, Entregue), digite o código de rastreio e clique Salvar.
 4) A cliente acompanha em "Rastrear pedido" com o número do pedido + WhatsApp.
+publicar
