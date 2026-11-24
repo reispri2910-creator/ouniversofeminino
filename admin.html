@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow"><title>Pedidos · O Universo Feminino</title>
+<style>
+*{box-sizing:border-box}body{margin:0;font-family:system-ui,sans-serif;background:#f6f1f8;color:#2a1838}
+header{background:#2a1838;color:#fff;padding:14px 18px;display:flex;justify-content:space-between;align-items:center;gap:10px}
+h1{font-size:1.1rem;margin:0}main{max-width:760px;margin:0 auto;padding:16px}
+input,select{font:inherit;padding:10px;border:1px solid #cdbfd6;border-radius:10px;width:100%}
+button{font:inherit;cursor:pointer;border:0;border-radius:999px;padding:10px 18px;background:#b83a7a;color:#fff;font-weight:600}
+button.sec{background:#fff;color:#2a1838;border:1px solid #2a1838}
+.card{background:#fff;border-radius:14px;padding:14px;margin-bottom:12px;box-shadow:0 1px 3px #0002}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:8px}.row>*{flex:1 1 140px}
+.tag{display:inline-block;background:#eadcf3;border-radius:999px;padding:2px 10px;font-size:.78rem;font-weight:600}
+small{color:#6b5a78}.err{color:#b00020;min-height:1.2em}
+</style></head><body>
+<header><h1>Pedidos — O Universo Feminino</h1><button class="sec" id="sair" hidden>Sair</button></header>
+<main>
+<div id="login" class="card"><label>Senha da loja<input id="senha" type="password" autocomplete="current-password"></label>
+<p class="err" id="err"></p><button id="entrar">Entrar</button></div>
+<div id="lista" hidden><div class="row"><input id="busca" placeholder="Buscar por número, nome ou WhatsApp"><button class="sec" id="atualizar" style="flex:0 0 auto">Atualizar</button></div><div id="pedidos" style="margin-top:12px"></div></div>
+</main>
+<script>
+const API="/api/pedidos";let senha="",dados=[],etapas=[];
+const $=s=>document.querySelector(s);
+const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const brl=n=>Number(n||0).toLocaleString("pt-BR",{style:"currency",currency:"BRL"});
+const dt=i=>i?new Date(i).toLocaleString("pt-BR",{timeZone:"America/Campo_Grande"}):"";
+async function api(b){const r=await fetch(API,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({...b,senha})});return [r.ok,await r.json()]}
+async function carregar(){
+  const [ok,j]=await api({acao:"admin_listar"});
+  if(!ok){$("#err").textContent=j.erro;senha="";$("#login").hidden=false;$("#lista").hidden=true;$("#sair").hidden=true;return}
+  dados=j.pedidos;etapas=j.etapas;$("#login").hidden=true;$("#lista").hidden=false;$("#sair").hidden=false;sessionStorage.setItem("s",senha);draw();
+}
+function draw(){
+  const q=$("#busca").value.toLowerCase().trim();
+  $("#pedidos").innerHTML=dados.filter(p=>!q||[p.numero,p.nome,p.whatsapp].join(" ").toLowerCase().includes(q)).map(p=>`
+  <div class="card" data-n="${esc(p.numero)}"><b>Pedido ${esc(p.numero)}</b> <span class="tag">${esc(etapas[p.etapa-1])}${p.cancelado?" · CANCELADO":""}</span><br>
+  <small>${esc(dt(p.criadoEm))} · ${esc(p.nome||"sem nome")} · <a href="https://wa.me/55${esc(p.whatsapp)}" target="_blank">${esc(p.whatsapp)}</a></small>
+  <div>${p.itens.map(i=>`${i.qtd}x ${esc(i.nome)}`).join("<br>")}</div>
+  <small>${esc(p.endereco)} · ${esc(p.frete)}<br>${esc(p.pagamento)} · <b>${brl(p.total)}</b> · ${p.pago?"✅ PAGO":"⏳ aguardando pagamento"}</small>
+  <div class="row"><select class="et">${etapas.map((e,i)=>`<option value="${i+1}" ${p.etapa===i+1?"selected":""}>${i+1}. ${esc(e)}</option>`).join("")}</select>
+  <input class="rs" placeholder="Código de rastreio" value="${esc(p.rastreio)}"><input class="sv" placeholder="PAC ou SEDEX" value="${esc(p.servico)}"></div>
+  <div class="row"><button class="salvar">Salvar</button><button class="sec cancelar">${p.cancelado?"Reativar":"Cancelar pedido"}</button></div></div>`).join("")||"<p>Nenhum pedido ainda.</p>";
+}
+$("#pedidos").addEventListener("click",async e=>{
+  const c=e.target.closest(".card");if(!c)return;const n=c.dataset.n,p=dados.find(x=>x.numero===n);
+  if(e.target.classList.contains("salvar")){
+    const [ok,j]=await api({acao:"admin_atualizar",numero:n,etapa:c.querySelector(".et").value,rastreio:c.querySelector(".rs").value,servico:c.querySelector(".sv").value});
+    if(ok){dados[dados.indexOf(p)]=j.pedido;draw();}else alert(j.erro);
+  }
+  if(e.target.classList.contains("cancelar")){
+    const [ok,j]=await api({acao:"admin_atualizar",numero:n,cancelado:!p.cancelado});
+    if(ok){dados[dados.indexOf(p)]=j.pedido;draw();}else alert(j.erro);
+  }
+});
+$("#entrar").onclick=()=>{senha=$("#senha").value;carregar()};
+$("#senha").addEventListener("keydown",e=>{if(e.key==="Enter")$("#entrar").click()});
+$("#atualizar").onclick=carregar;$("#busca").oninput=draw;
+$("#sair").onclick=()=>{sessionStorage.removeItem("s");location.reload()};
+senha=sessionStorage.getItem("s")||"";if(senha)carregar();
+</script></body></html>
