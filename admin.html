@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow"><title>Painel · O Universo Feminino</title>
+<style>
+*{box-sizing:border-box}body{margin:0;font-family:system-ui,sans-serif;background:#f6f1f8;color:#2a1838}
+header{background:#2a1838;color:#fff;padding:14px 18px;display:flex;justify-content:space-between;align-items:center;gap:10px}
+h1{font-size:1.1rem;margin:0}main{max-width:860px;margin:0 auto;padding:16px}
+input,select,textarea{font:inherit;padding:10px;border:1px solid #cdbfd6;border-radius:10px;width:100%}
+button{font:inherit;cursor:pointer;border:0;border-radius:999px;padding:10px 18px;background:#b83a7a;color:#fff;font-weight:600}
+button.sec{background:#fff;color:#2a1838;border:1px solid #2a1838}button.ok{background:#1d7a46}button:disabled{opacity:.5}
+.card{background:#fff;border-radius:14px;padding:14px;margin-bottom:12px;box-shadow:0 1px 3px #0002}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:8px}.row>*{flex:1 1 140px}.row>button{flex:0 0 auto}
+.tag{display:inline-block;background:#eadcf3;border-radius:999px;padding:2px 10px;font-size:.78rem;font-weight:600}
+.tag.r{background:#ffd9d9;color:#8a1020}.tag.g{background:#d9f3e2;color:#17603a}.tag.y{background:#fff0c9;color:#7a5600}
+small{color:#6b5a78}.err{color:#b00020;min-height:1.2em}.alerta{background:#fff0c9;border-radius:12px;padding:10px 14px;margin-bottom:12px}
+nav{display:flex;gap:6px;overflow-x:auto;margin-bottom:12px}nav button{background:#fff;color:#2a1838;border:1px solid #cdbfd6;flex:none}nav button.on{background:#2a1838;color:#fff}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:12px}.kpis .card{margin:0;text-align:center}.kpis b{display:block;font-size:1.4rem}
+table{width:100%;border-collapse:collapse}td,th{padding:6px;border-bottom:1px solid #eee;text-align:left;font-size:.92rem}td input{padding:6px}
+.envio{background:#f6f1f8;border-radius:10px;padding:10px;margin-top:10px}
+</style></head><body>
+<header><h1>Painel — O Universo Feminino</h1><button class="sec" id="sair" hidden>Sair</button></header>
+<main>
+<div id="login" class="card"><label>Senha da loja<input id="senha" type="password" autocomplete="current-password"></label>
+<p class="err" id="err"></p><button id="entrar">Entrar</button></div>
+<div id="app" hidden>
+<div id="alertas"></div>
+<nav id="abas"><button data-a="pedidos" class="on">Pedidos</button><button data-a="vendas">Vendas</button><button data-a="estoque">Estoque</button><button data-a="crm">Clientes (CRM)</button></nav>
+<section id="a-pedidos"><div class="row"><input id="busca" placeholder="Buscar por número, nome ou WhatsApp"><select id="filtro" style="flex:0 1 200px"><option value="">Todos</option><option value="pagar">Aguardando pagamento</option><option value="enviar">Pagos, a enviar</option><option value="andamento">Enviados</option></select><button class="sec" id="atualizar">Atualizar</button></div><div id="pedidos" style="margin-top:12px"></div></section>
+<section id="a-vendas" hidden></section>
+<section id="a-estoque" hidden></section>
+<section id="a-crm" hidden></section>
+</div>
+</main>
+<script>
+let senha="",dados=[],etapas=[],estoque=[],clientes=null;
+const $=s=>document.querySelector(s);
+const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const brl=n=>Number(n||0).toLocaleString("pt-BR",{style:"currency",currency:"BRL"});
+const dt=i=>i?new Date(i).toLocaleString("pt-BR",{timeZone:"America/Campo_Grande"}):"";
+const dias=i=>i?Math.floor((Date.now()-new Date(i))/864e5):9999;
+async function api(rota,b){const r=await fetch("/api/"+rota,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({...b,senha})});return [r.ok,await r.json().catch(()=>({erro:"Resposta inválida do servidor."}))]}
+const pg=(rota,b)=>api(rota,b);
+const pago=p=>p.pago===undefined?p.etapa>=2:!!p.pago;
+async function carregar(){
+  const [ok,j]=await pg("pedidos",{acao:"admin_listar"});
+  if(!ok){$("#err").textContent=j.erro;senha="";$("#login").hidden=false;$("#app").hidden=true;$("#sair").hidden=true;return}
+  dados=j.pedidos;etapas=j.etapas;$("#login").hidden=true;$("#app").hidden=false;$("#sair").hidden=false;sessionStorage.setItem("s",senha);
+  const [o2,e]=await pg("admin",{acao:"estoque_ler"});if(o2)estoque=e.produtos;
+  alertas();draw();vendas();drawEstoque();
+}
+function alertas(){
+  const a=[];
+  const aEnviar=dados.filter(p=>pago(p)&&!p.cancelado&&p.etapa<4&&!p.rastreio).length;
+  const aPagar=dados.filter(p=>!pago(p)&&!p.cancelado).length;
+  if(aEnviar)a.push(`📦 <b>${aEnviar}</b> pedido(s) pago(s) esperando envio`);
+  if(aPagar)a.push(`⏳ <b>${aPagar}</b> pedido(s) aguardando pagamento (se já caiu o Pix, marque como "Pagamento confirmado")`);
+  const baixo=estoque.filter(x=>x.controla&&x.qtd<=x.min);
+  if(baixo.length)a.push(`⚠️ Estoque baixo: ${baixo.map(x=>`${esc(x.nome)} (${x.qtd})`).join(", ")}`);
+  $("#alertas").innerHTML=a.map(t=>`<div class="alerta">${t}</div>`).join("");
+}
+/* ---------- pedidos ---------- */
+function envioHTML(p){
+  if(!pago(p)||p.cancelado)return "";
+  const e=p.envio;
+  if(e&&e.estado==="comprado")return `<div class="envio">✅ Etiqueta comprada${p.rastreio?` · rastreio <b>${esc(p.rastreio)}</b>`:""} ${e.etiqueta?`· <a href="${esc(e.etiqueta)}" target="_blank">Imprimir etiqueta</a>`:""}</div>`;
+  if(e&&e.cartId)return `<div class="envio">Envio no carrinho do Melhor Envio: <b>${e.servico===2?"SEDEX":"PAC"} · ${brl(e.preco)}</b><br><small>Ao confirmar, o valor será descontado do seu saldo no Melhor Envio.</small>
+  <div class="row"><button class="ok envconf">Confirmar e comprar etiqueta (${brl(e.preco)})</button><button class="sec envdes">Desfazer</button></div></div>`;
+  if(!p.entrega)return `<div class="envio"><small>Pedido antigo, sem endereço completo: gere a etiqueta direto no painel do Melhor Envio e cole o código de rastreio abaixo.</small></div>`;
+  return `<div class="envio"><b>Enviar pelos Correios</b><div class="row"><select class="envsv"><option value="1" ${p.servicoId!=2?"selected":""}>PAC</option><option value="2" ${p.servicoId==2?"selected":""}>SEDEX</option></select><input class="envcpf" placeholder="CPF da cliente (se o Correios pedir)" inputmode="numeric"><button class="envprep">Preparar envio</button></div></div>`;
+}
+function draw(){
+  const q=$("#busca").value.toLowerCase().trim(),f=$("#filtro").value;
+  const lista=dados.filter(p=>(!q||[p.numero,p.nome,p.whatsapp].join(" ").toLowerCase().includes(q))&&(!f||(f==="pagar"?!pago(p)&&!p.cancelado:f==="enviar"?pago(p)&&!p.cancelado&&p.etapa<4:p.etapa===4)));
+  $("#pedidos").innerHTML=lista.map(p=>`
+  <div class="card" data-n="${esc(p.numero)}"><b>Pedido ${esc(p.numero)}</b> <span class="tag">${esc(etapas[p.etapa-1])}${p.cancelado?" · CANCELADO":""}</span> <span class="tag ${pago(p)?"g":"y"}">${pago(p)?"PAGO":"aguardando pagamento"}</span><br>
+  <small>${esc(dt(p.criadoEm))} · ${esc(p.nome||"sem nome")} · <a href="https://wa.me/55${esc(p.whatsapp)}" target="_blank">${esc(p.whatsapp)}</a></small>
+  <div>${p.itens.map(i=>`${i.qtd}x ${esc(i.nome)}`).join("<br>")}</div>
+  <small>${esc(p.endereco)} · ${esc(p.frete)}<br>${esc(p.pagamento)} · <b>${brl(p.total)}</b></small>
+  <div class="row"><select class="et">${etapas.map((e,i)=>`<option value="${i+1}" ${p.etapa===i+1?"selected":""}>${i+1}. ${esc(e)}</option>`).join("")}</select>
+  <input class="rs" placeholder="Código de rastreio" value="${esc(p.rastreio)}"><input class="sv" placeholder="PAC ou SEDEX" value="${esc(p.servico)}"></div>
+  <div class="row"><button class="salvar">Salvar</button><button class="sec cancelar">${p.cancelado?"Reativar":"Cancelar pedido"}</button></div>${envioHTML(p)}<p class="err"></p></div>`).join("")||"<p>Nenhum pedido.</p>";
+}
+$("#pedidos").addEventListener("click",async e=>{
+  const c=e.target.closest(".card");if(!c)return;const n=c.dataset.n,p=dados.find(x=>x.numero===n),er=c.querySelector(".err");
+  const subst=j=>{dados[dados.indexOf(p)]=j.pedido||{...p,envio:j.envio};alertas();draw();vendas()};
+  const falha=j=>{er.textContent=(j.erro||"Erro")+(j.detalhe?" — "+j.detalhe:"")};
+  if(e.target.classList.contains("salvar")){
+    const [ok,j]=await pg("pedidos",{acao:"admin_atualizar",numero:n,etapa:c.querySelector(".et").value,rastreio:c.querySelector(".rs").value,servico:c.querySelector(".sv").value});
+    if(ok){subst(j);await recarregarEstoque()}else falha(j);
+  }
+  if(e.target.classList.contains("cancelar")){
+    const [ok,j]=await pg("pedidos",{acao:"admin_atualizar",numero:n,cancelado:!p.cancelado});
+    if(ok){subst(j);await recarregarEstoque()}else falha(j);
+  }
+  if(e.target.classList.contains("envprep")){
+    e.target.disabled=true;er.textContent="Preparando...";
+    const [ok,j]=await pg("admin",{acao:"envio_preparar",numero:n,servicoId:c.querySelector(".envsv").value,cpf:c.querySelector(".envcpf").value});
+    if(ok){p.envio=j.envio;draw()}else{falha(j);e.target.disabled=false}
+  }
+  if(e.target.classList.contains("envconf")){
+    if(!confirm(`Comprar a etiqueta agora por ${brl(p.envio.preco)}? O valor sai do seu saldo no Melhor Envio.`))return;
+    e.target.disabled=true;er.textContent="Comprando etiqueta...";
+    const [ok,j]=await pg("admin",{acao:"envio_confirmar",numero:n});
+    if(ok){subst(j)}else{falha(j);e.target.disabled=false}
+  }
+  if(e.target.classList.contains("envdes")){
+    const [ok,j]=await pg("admin",{acao:"envio_desfazer",numero:n});
+    if(ok){delete p.envio;draw()}else falha(j);
+  }
+});
+async function recarregarEstoque(){const [o,e]=await pg("admin",{acao:"estoque_ler"});if(o){estoque=e.produtos;alertas();drawEstoque()}}
+/* ---------- vendas ---------- */
+function vendas(){
+  const vivos=dados.filter(p=>!p.cancelado),pagos=vivos.filter(pago);
+  const fat=pagos.reduce((t,p)=>t+p.total,0),receber=vivos.filter(p=>!pago(p)).reduce((t,p)=>t+p.total,0);
+  const por={},forma={};
+  pagos.forEach(p=>{p.itens.forEach(i=>{por[i.nome]=(por[i.nome]||{q:0,v:0});por[i.nome].q+=i.qtd;por[i.nome].v+=i.qtd*i.preco});const f=(p.pagamento||"").split(" ")[0];forma[f]=(forma[f]||0)+1});
+  const top=Object.entries(por).sort((a,b)=>b[1].q-a[1].q).slice(0,8);
+  $("#a-vendas").innerHTML=`<div class="kpis"><div class="card"><small>Vendas pagas</small><b>${brl(fat)}</b></div><div class="card"><small>Pedidos pagos</small><b>${pagos.length}</b></div><div class="card"><small>Ticket médio</small><b>${brl(pagos.length?fat/pagos.length:0)}</b></div><div class="card"><small>A receber</small><b>${brl(receber)}</b></div></div>
+  <div class="card"><b>Mais vendidos</b><table>${top.map(([n,x])=>`<tr><td>${esc(n)}</td><td>${x.q} un.</td><td>${brl(x.v)}</td></tr>`).join("")||"<tr><td>Sem vendas pagas ainda.</td></tr>"}</table></div>
+  <div class="card"><b>Formas de pagamento</b><br>${Object.entries(forma).map(([k,v])=>`${esc(k)}: ${v}`).join(" · ")||"—"}</div>
+  <p><small>Os números consideram os ${dados.length} pedidos mais recentes carregados.</small></p>`;
+}
+/* ---------- estoque ---------- */
+function drawEstoque(){
+  $("#a-estoque").innerHTML=`<div class="card"><p><small>Marque "controlar" nos produtos que você quer acompanhar. O site não deixa fechar pedido de produto sem estoque, e o estoque baixa sozinho quando o pagamento é confirmado. Você é avisada quando a quantidade chega ao mínimo.</small></p><table><tr><th>Produto</th><th>Controlar</th><th>Qtd</th><th>Mínimo</th><th></th></tr>
+  ${estoque.map(x=>`<tr data-id="${x.id}"><td>${esc(x.nome)} ${x.controla&&x.qtd<=x.min?'<span class="tag r">baixo</span>':""}</td><td><input type="checkbox" class="ctl" ${x.controla?"checked":""} style="width:auto"></td><td><input type="number" min="0" class="qt" value="${x.qtd}" style="width:80px"></td><td><input type="number" min="0" class="mn" value="${x.min}" style="width:80px"></td><td><button class="svest">Salvar</button></td></tr>`).join("")}</table></div>`;
+}
+$("#a-estoque").addEventListener("click",async e=>{
+  if(!e.target.classList.contains("svest"))return;const tr=e.target.closest("tr");
+  const [ok,j]=await pg("admin",{acao:"estoque_salvar",id:tr.dataset.id,controla:tr.querySelector(".ctl").checked,qtd:tr.querySelector(".qt").value,min:tr.querySelector(".mn").value});
+  if(ok){await recarregarEstoque()}else alert(j.erro);
+});
+/* ---------- CRM ---------- */
+const MSG={
+ obrigada:"Oi, {nome}! Aqui é a Priscila, da O Universo Feminino. Obrigada pela compra! Qualquer dúvida sobre os produtos é só me chamar. 💖",
+ pagar:"Oi, {nome}! Aqui é a Priscila, da O Universo Feminino. Vi que seu pedido ainda está aguardando o pagamento. Precisa de ajuda para finalizar? 😊",
+ volta:"Oi, {nome}! Aqui é a Priscila, da O Universo Feminino. Faz um tempinho que não te vejo por aqui. Chegaram novidades que combinam com você! Quer dar uma olhada? https://ouniversofeminino.pages.dev",
+ espera:"Oi, {nome}! Aqui é a Priscila, da O Universo Feminino. Chegou produto novo que estava na sua lista de espera! Quer garantir o seu? 💄"
+};
+async function crm(){
+  const box=$("#a-crm");box.innerHTML="<p>Carregando clientes...</p>";
+  const [ok,j]=await pg("admin",{acao:"clientes"});if(!ok){box.innerHTML=`<p class="err">${esc(j.erro)}</p>`;return}
+  clientes=j;desenharCRM();
+}
+function perfil(u){
+  const meus=dados.filter(p=>!p.cancelado&&(p.email===u.email||p.whatsapp===u.tel));
+  const pagos=meus.filter(pago);
+  return {...u,qtdPed:meus.length,gasto:pagos.reduce((t,p)=>t+p.total,0),ultimo:meus.map(p=>p.criadoEm).sort().pop()||"",aguardando:meus.some(p=>!pago(p))};
+}
+function desenharCRM(){
+  const f=$("#crmf")?$("#crmf").value:"";
+  let l=clientes.clientes.map(perfil);
+  if(f==="nova")l=l.filter(u=>!u.qtdPed);if(f==="inativa")l=l.filter(u=>u.qtdPed&&dias(u.ultimo)>=30);if(f==="espera")l=l.filter(u=>u.espera.length);if(f==="pagar")l=l.filter(u=>u.aguardando);
+  l.sort((a,b)=>b.gasto-a.gasto);
+  $("#a-crm").innerHTML=`<div class="row"><select id="crmf"><option value="">Todas as clientes (${clientes.total})</option><option value="nova" ${f==="nova"?"selected":""}>Cadastradas que ainda não compraram</option><option value="pagar" ${f==="pagar"?"selected":""}>Com pedido aguardando pagamento</option><option value="inativa" ${f==="inativa"?"selected":""}>Sem comprar há 30+ dias</option><option value="espera" ${f==="espera"?"selected":""}>Na lista de espera</option></select><select id="crmm"><option value="obrigada">Mensagem: agradecimento</option><option value="pagar">Mensagem: pagamento pendente</option><option value="volta">Mensagem: sentimos sua falta</option><option value="espera">Mensagem: produto novo</option></select></div>
+  <div style="margin-top:12px">${l.map(u=>`<div class="card"><b>${esc(u.nome)}</b> ${u.qtdPed?`<span class="tag g">${u.qtdPed} pedido(s) · ${brl(u.gasto)}</span>`:'<span class="tag">sem compras</span>'}${u.espera.length?' <span class="tag y">lista de espera</span>':""}<br><small>${esc(u.email)} · ${esc(u.tel)}${u.ultimo?` · última compra há ${dias(u.ultimo)} dia(s)`:""}</small><div class="row"><button class="wa" data-t="${esc(u.tel)}" data-n="${esc(u.nome.split(" ")[0])}">Chamar no WhatsApp</button></div></div>`).join("")||"<p>Nenhuma cliente nesse filtro.</p>"}</div>
+  <p><small>O histórico de compras considera os ${dados.length} pedidos mais recentes. Mostra as 45 cadastradas mais recentes.</small></p>`;
+  $("#crmf").onchange=desenharCRM;
+}
+$("#a-crm").addEventListener("click",e=>{const b=e.target.closest(".wa");if(!b)return;const m=MSG[$("#crmm").value].replace("{nome}",b.dataset.n);window.open(`https://wa.me/55${b.dataset.t}?text=${encodeURIComponent(m)}`,"_blank")});
+/* ---------- geral ---------- */
+$("#abas").addEventListener("click",e=>{const b=e.target.closest("button");if(!b)return;
+  document.querySelectorAll("#abas button").forEach(x=>x.classList.toggle("on",x===b));
+  ["pedidos","vendas","estoque","crm"].forEach(a=>$("#a-"+a).hidden=a!==b.dataset.a);
+  if(b.dataset.a==="crm"&&!clientes)crm();});
+$("#entrar").onclick=()=>{senha=$("#senha").value;carregar()};
+$("#senha").addEventListener("keydown",e=>{if(e.key==="Enter")$("#entrar").click()});
+$("#atualizar").onclick=carregar;$("#busca").oninput=draw;$("#filtro").onchange=draw;
+$("#sair").onclick=()=>{sessionStorage.removeItem("s");location.reload()};
+senha=sessionStorage.getItem("s")||"";if(senha)carregar();
+</script></body></html>
